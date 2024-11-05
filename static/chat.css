@@ -1,0 +1,83 @@
+body {
+    margin: 0;
+    height: 100dvh;
+    padding: 15px;
+    box-sizing: border-box;
+}
+
+.dispo-special {
+    display: flex;
+    flex-direction: column;
+}
+
+.dispo-special > #chatarea, #messagearea {
+    flex-grow: 1;
+}
+.dispo-special > :not(#chatarea):not(#messagearea) {
+    flex-shrink: 1;
+}
+
+#roomselec {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+#roomselec p {
+    margin: 0;
+}
+
+#chatarea {
+    border: 5px solid black;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+#chatform {
+    padding: 10px;
+    border: 2px solid black;
+    border-radius: 5px;
+    display: flex;
+    margin: 5px 10px 10px;
+}
+#chatform input[type=text] {
+    flex: 1 1 auto;
+    margin-right: 5px;
+}
+
+#messagearea {
+    padding: 5px 0;
+    box-sizing: border-box;
+    overflow: auto;
+    overscroll-behavior-y: contain;
+    scroll-snap-type: y proximity;
+}
+#messagearea p {
+    margin: 20px 10px;
+}
+#messagearea > p:last-child {
+    scroll-snap-align: end;
+    padding-bottom: 10px;
+    margin-bottom: 0;
+}
+
+#roomcreate {
+    margin: 5px 0;
+}
+
+.roomconnectbtn {
+    margin: 5px;
+}
+
+@font-face {
+    font-family: "Oswald";
+    font-display: swap;
+    font-style: normal;
+    src: url(/static/Oswald.ttf);
+}
+
+.oswald-normal {
+  font-family: "Oswald", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 400;
+  font-style: normal;
+}

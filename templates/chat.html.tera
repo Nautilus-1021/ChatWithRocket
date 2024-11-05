@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Chat</title>
+        <link rel="stylesheet" href="/static/chat.css">
+        <script type="module" src="/static/chat.js"></script>
+    </head>
+    <body class="oswald-normal dispo-special">
+        <h1>Chat</h1>
+        <div id="roomselec">
+            <p>Available rooms: </p>
+            <div id="roomslist"></div>
+        </div>
+        <form id="roomcreate">
+            <label for="room_id">Numéro de la salle de chat à créer: </label>
+            <input type="number" name="room_id">
+            <input type="submit" value="Créer">
+        </form>
+        <div id="chatarea" class="dispo-special">
+            <div id="messagearea"></div>
+            <form id="chatform">
+                <input type="text" placeholder="Message à envoyer" name="messagetxt">
+                <input type="submit">
+            </form>
+        </div>
+    </body>
+</html>

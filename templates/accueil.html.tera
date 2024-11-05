@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Accueil</title>
+        <style>
+body {
+    font-family: sans-serif;
+}
+
+#condiv {
+    display: flex;
+    flex-direction: row;
+    justify-items: flex-start;
+    align-items: center;
+}
+        </style>
+    </head>
+    <body>
+        <h1>Bonjour {{ name }} !</h1>
+        <div id="condiv">
+            <button id="con">Connecter</button>
+            <p id="result"></p>
+        </div>
+        <form id="echoform">
+            <label for="echotext">Texte à envoyer: </label>
+            <input type="text" name="echotext">
+            <input type="submit">
+        </form>
+        <p>Responses:</p>
+        <ul id="responses"></ul>
+        <script>
+document.getElementById("con").onclick = function (event) {
+    let ws_socket = new WebSocket("/echo");
+
+    if (ws_socket != null) {
+        document.getElementById("result").innerText = "Connected !";
+    }
+
+    ws_socket.onopen = function (event) {
+        let form = document.getElementById("echoform");
+        form.onsubmit = function (event) {
+            event.preventDefault();
+            
+            const formdata = new FormData(form);
+
+            ws_socket.send(formdata.get("echotext"));
+        }
+    }
+
+    const responses_list = document.getElementById("responses");
+    ws_socket.onmessage = function (event) {
+        responses_list.innerHTML = responses_list.innerHTML + "<li>" + event.data + "</li>"
+    }
+}
+        </script>
+    </body>
+</html>
