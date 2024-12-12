@@ -3,13 +3,13 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc, LazyLock
     },
-    task::{Context, Poll}
+    task::{Context, Poll, Waker}
 };
 
-use rocket::{futures::SinkExt, get, State};
+use rocket::{futures::SinkExt, get, tokio::task::block_in_place, State};
 use rocket_dyn_templates::{context, Template};
 use ws::{Message, WebSocket};
 use rocket::tokio::{
@@ -18,6 +18,11 @@ use rocket::tokio::{
 };
 use rocket::futures::{FutureExt, StreamExt};
 use rocket::serde::{Serialize, json::Json};
+
+static CLIENT_COUNTER: AtomicUsize = AtomicUsize::new(0);
+pub static WAKER_CENTRAL: LazyLock<WakerCentral> = LazyLock::new(|| {
+    WakerCentral(std::sync::Mutex::new(HashMap::new()))
+});
 
 #[get("/subscribe?<room_num>")]
 pub async fn subscribe<'ro>(ws: WebSocket, rooms: &'ro State<Rooms>, room_num: usize) -> ws::Channel<'ro> {
@@ -37,10 +42,15 @@ pub async fn subscribe<'ro>(ws: WebSocket, rooms: &'ro State<Rooms>, room_num: u
     ws.channel(move |stream| { Box::pin(async move {
         let (mut ws_sender, mut ws_receiver) = stream.split();
         let should_close_master = Arc::new(AtomicBool::new(false));
+        let client_id = CLIENT_COUNTER.fetch_add(1, Ordering::Relaxed);
 
         let should_close = should_close_master.clone();
         let inbound = task::spawn(async move {
-            let mut should_close_fut = ShouldCloseAsync(should_close.clone()).fuse();
+            let mut should_close_fut = ShouldCloseAsync {
+                client_id,
+                client_status: should_close.clone(),
+                side: false
+            }.fuse();
 
             loop {
                 select! {
@@ -80,7 +90,11 @@ pub async fn subscribe<'ro>(ws: WebSocket, rooms: &'ro State<Rooms>, room_num: u
 
         let should_close = should_close_master;
         let outbound = task::spawn(async move {
-            let mut should_close_fut = ShouldCloseAsync(should_close.clone()).fuse();
+            let mut should_close_fut = ShouldCloseAsync {
+                client_id,
+                client_status: should_close.clone(),
+                side: true
+            };
 
             loop {
                 select! {
@@ -137,16 +151,69 @@ pub struct Rooms(pub RwLock<HashMap<usize, broadcast::Sender<String>>>);
 
 pub static GLOBAL_SHUTDOWN_SIGNAL: AtomicBool = AtomicBool::new(false);
 
-struct ShouldCloseAsync(Arc<AtomicBool>);
+struct ShouldCloseAsync{
+    client_status: Arc<AtomicBool>,
+    client_id: usize,
+    side: bool
+}
 
 impl Future for ShouldCloseAsync {
     type Output = ();
 
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.0.load(Ordering::Acquire) || GLOBAL_SHUTDOWN_SIGNAL.load(Ordering::Acquire) {
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        WAKER_CENTRAL.add_waker(self.client_id, cx.waker(), self.side);
+
+        if self.client_status.load(Ordering::Acquire) || GLOBAL_SHUTDOWN_SIGNAL.load(Ordering::Acquire) {
             Poll::Ready(())
         } else {
             Poll::Pending
+        }
+    }
+}
+
+pub struct WakerCentral(std::sync::Mutex<HashMap<usize, (Option<Waker>, Option<Waker>)>>);
+
+impl WakerCentral {
+    fn add_waker(&self, client_id: usize, waker_to_register: &Waker, sender_side: bool) {
+        let mut wakers = self.0.lock().unwrap();
+
+        if let Some(waker) = wakers.get_mut(&client_id) {
+            if sender_side {
+                if let Some(waker) = &mut waker.0 {
+                    waker.clone_from(waker_to_register);
+                } else {
+                    waker.0 = Some(waker_to_register.clone());
+                }
+            } else {
+                if let Some(waker) = &mut waker.1 {
+                    waker.clone_from(waker_to_register);
+                } else {
+                    waker.1 = Some(waker_to_register.clone());
+                }
+            }
+        } else {
+            let tuple = if sender_side {
+                (Some(waker_to_register.clone()), None)
+            } else {
+                (None, Some(waker_to_register.clone()))
+            };
+
+            wakers.insert(client_id, tuple);
+        }
+    }
+
+    pub async fn close_connections(&self) {
+        let mut wakers_hashmap = block_in_place(|| {
+            self.0.lock()
+        }).unwrap();
+
+        for wakers in wakers_hashmap.values_mut() {
+            if let Some(waker) = wakers.0.take() {
+                waker.wake();
+            }
+            if let Some(waker) = wakers.1.take() {
+                waker.wake();
+            }
         }
     }
 }

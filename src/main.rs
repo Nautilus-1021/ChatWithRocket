@@ -17,6 +17,7 @@ fn rocket() -> _ {
         .attach(Template::fairing())
         .attach(AdHoc::on_shutdown("Chat shutdown", |_rocket| Box::pin(async move {
             chat::GLOBAL_SHUTDOWN_SIGNAL.store(true, Ordering::Release);
+            chat::WAKER_CENTRAL.close_connections().await;
         })))
         .manage(chat::Rooms(RwLock::new(HashMap::new())))
 }
